@@ -48,7 +48,6 @@ fastify.post('/api/login', async (request, reply) => {
 
     if (inputUser === expectedUser && inputPass === expectedPass) {
         request.session.authenticated = true;
-        // Fastify session might need manual save in some cases
         if (request.session.save) {
             await request.session.save();
         }
@@ -73,8 +72,6 @@ fastify.post('/api/login', async (request, reply) => {
             if (!student) {
                 return reply.status(404).send({ success: false, message: "Bukan Siswa" });
             }
-
-            // --- DOUBLE TAP PROTECTION ---
             const today = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
             const existingLog = await db.get(
                 'SELECT id FROM attendance_logs WHERE rfid_uid = ? AND date = ?',
@@ -187,10 +184,7 @@ fastify.post('/api/login', async (request, reply) => {
         if (!device_id || !rfid_uid) return reply.status(400).send({ success: false, message: "Missing data" });
 
         try {
-            // Update device with last scanned UID
             await db.run('UPDATE devices SET last_scanned_uid = ?, last_seen = CURRENT_TIMESTAMP WHERE device_id = ?', [rfid_uid, device_id]);
-            
-            // Check if student exists
             const student = await db.get('SELECT name, class FROM students WHERE rfid_uid = ?', [rfid_uid]);
             return { 
                 success: true, 

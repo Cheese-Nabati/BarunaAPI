@@ -131,7 +131,6 @@
     </div>
 </div>
 
-<!-- Bulk Delete Modal -->
 <div class="modal fade" id="bulkDeleteModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -150,7 +149,6 @@
     </div>
 </div>
 
-<!-- Notification Modal -->
 <div class="modal fade" id="notifyModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -169,7 +167,6 @@
     </div>
 </div>
 
-<!-- Confirm Modal -->
 <div class="modal fade" id="confirmModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -204,7 +201,6 @@
     const notifyModal = new bootstrap.Modal(document.getElementById('notifyModal'));
     const confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
 
-    // --- Global Console Override ---
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
     const originalConsoleLog = console.log;
@@ -269,7 +265,6 @@
         document.getElementById('confirmMessage').innerHTML = message;
         const confirmOkBtn = document.getElementById('confirmOkBtn');
         
-        // Remove old listeners by replacing the element
         const newOkBtn = confirmOkBtn.cloneNode(true);
         confirmOkBtn.parentNode.replaceChild(newOkBtn, confirmOkBtn);
         
@@ -424,7 +419,7 @@
 
     window.onload = () => {
         loadStudents();
-        setInterval(checkDeviceScans, 3000); // Poll for card scans every 3 seconds
+        setInterval(checkDeviceScans, 3000); 
     };
 
     let lastSeenScanUid = null;
@@ -434,17 +429,14 @@
             const res = await fetch('/api/admin/devices');
             const devices = await res.json();
             
-            // Look for any device in WRITER mode that scanned a card recently
             const writerDevice = devices.find(d => d.mode === 'WRITER' && d.last_scanned_uid);
             
             if (writerDevice && writerDevice.last_scanned_uid !== lastSeenScanUid) {
                 lastSeenScanUid = writerDevice.last_scanned_uid;
                 
-                // Fetch student info for this UID
                 const s = allStudents.find(student => student.rfid_uid === lastSeenScanUid);
                 
                 if (s) {
-                    // Registered: Show Info Modal
                     showNotification('warning', 'Kartu Sudah Terdaftar', `
                         <div class="text-start">
                             <p><strong>Nama:</strong> ${s.name}</p>
@@ -453,10 +445,8 @@
                         </div>
                     `);
                 } else {
-                    // New: Open Add Modal and fill UID
                     showAddModal();
                     document.getElementById('inp_uid').value = lastSeenScanUid;
-                    // Optional: auto-focus name field
                     setTimeout(() => document.getElementById('inp_nama').focus(), 500);
                 }
             }

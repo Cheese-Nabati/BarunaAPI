@@ -11,7 +11,6 @@ fastify.get('/api/device/ping', async (request, reply) => {
     const deviceId = request.headers['x-device-id'] || 'UNKNOWN_DEVICE';
     
     try {
-        // Upsert device info
         await db.run(`
             INSERT INTO devices (device_id, last_seen) 
             VALUES (?, CURRENT_TIMESTAMP)
@@ -76,8 +75,6 @@ fastify.get('/logout', async (request, reply) => {
         ORDER BY attendance_logs.timestamp DESC LIMIT 20
     `);
     });
-
-    // Ambil Data Rekap Bulanan (Result Database - JSON)
     fastify.get('/api/recap', async () => {
         return await db.all(`
             SELECT monthly_results.*, students.name, students.class 
@@ -89,7 +86,7 @@ fastify.get('/logout', async (request, reply) => {
 
     fastify.get('/api/admin/recap-bulanan', async (request, reply) => {
         try {
-            const currentMonth = new Date().toISOString().slice(0, 7); // Hasil: YYYY-MM
+            const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM Date
             
             await db.run(`
                 INSERT INTO monthly_results (rfid_uid, month_year, total_attendance)

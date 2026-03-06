@@ -55,7 +55,6 @@
     </div>
 </div>
 
-<!-- Notification Modal -->
 <div class="modal fade" id="notifyModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -93,7 +92,6 @@
         notifyModal.show();
     }
 
-    // --- INITIAL LOAD ---
     window.onload = () => {
         loadDevices();
         setInterval(() => {
@@ -101,7 +99,6 @@
         }, 5000); 
     };
 
-    // --- DEVICE LOGIC ---
     async function loadDevices() {
         try {
             const res = await fetch('/api/admin/devices');
@@ -109,9 +106,8 @@
             const list = document.getElementById('device-list');
 
             list.innerHTML = data.map(dev => {
-                // Since SQL returns local time now, we compare it with local Date
                 const lastSeenDate = new Date(dev.last_seen.replace(' ', 'T'));
-                const isOnline = (new Date() - lastSeenDate) < 40000; // 40s buffer
+                const isOnline = (new Date() - lastSeenDate) < 40000;
                 
                 return `
                 <tr>

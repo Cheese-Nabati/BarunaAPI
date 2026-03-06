@@ -1,5 +1,5 @@
 // ==========================================
-// Firmware V1.3 - RFID/NFC Feature Restored
+// Firmware V1.4 - Fixing Connection Issue
 // ==========================================
 
 #include <WiFi.h>
@@ -13,7 +13,7 @@ const char* ssid     = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
 String baseUrl      = "http://YOUR_SERVER_IP:3000";
-String deviceID     = "ESP32 - PROTOTYPE"; // Pastikan ID ini unik untuk setiap alat
+String deviceID     = "ESP32 - PROTOTYPE"; //Ganti Sesuai Kebutuhan/Lokasi 
 const String deviceToken = "YOUR_DEVICE_TOKEN_HERE";
 
 #define RFID_SDA_PIN 14
@@ -23,14 +23,15 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 unsigned long lastScrollTime = 0;
 unsigned long lastServerCheck = 0;
-const long serverCheckInterval = 5000; // Cek status setiap 5 detik
+const long serverCheckInterval = 5000; 
 const String brandPrefix = "SMKS 1 Barunawati - SMK Bisa, SMK Hebat, Barunawati JAYA! - ";
 String lastServerCustomText = "";
 String msgScroll = "  " + brandPrefix + "Silahkan Tap Kartu RFID Anda Di Sini!  ";
 int scrollPos = 0;
 
-// State Management
+
 String currentMode = "READER"; 
+String lastDrawnMode = ""; 
 bool isDevicePowerOn = true;
 bool isServerOnline = true;
 bool offlineMessageShown = false;
@@ -45,6 +46,8 @@ void setup() {
   lcd.setCursor(0, 0); lcd.print("SMK1BRW-ABSENSI");
   lcd.setCursor(0, 1); lcd.print("Menghubungkan...");
 
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500); Serial.print(".");
@@ -53,16 +56,15 @@ void setup() {
   Serial.println("\n--- SISTEM AKTIF ---");
   checkServerStatus();
   
-  // Custom Boot message: "Selamat Datang!"
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Selamat Datang!");
-  lcd.setCursor(0, 1); lcd.print("  SISTEM AKTIF  ");
+  lcd.setCursor(0, 1); lcd.print("  Menghubungkan  ");
   delay(2000);
   showIdleMessage();
+  lastDrawnMode = currentMode;
 }
 
 void loop() {
-  // Sync dengan Server berkala
   if (millis() - lastServerCheck > serverCheckInterval) {
     checkServerStatus();
     lastServerCheck = millis();
@@ -70,35 +72,47 @@ void loop() {
 
   if (!isServerOnline) {
     displayOffline();
+    lastDrawnMode = "OFFLINE";
     return;
   }
 
-  // Handle Power Status (Remote Sleep)
   if (!isDevicePowerOn) {
-    lcd.noBacklight();
-    lcd.clear();
+    if (lastDrawnMode != "SLEEP") {
+      lcd.noBacklight();
+      lcd.clear();
+      lastDrawnMode = "SLEEP";
+    }
     delay(1000);
     return;
   } else {
     lcd.backlight();
   }
 
-  // Handle Maintenance Mode
   if (currentMode == "MAINTENANCE") {
-    lcd.setCursor(0, 0); lcd.print(" SEDANG DALAM  ");
-    lcd.setCursor(0, 1); lcd.print(" PERBAIKAN...  ");
+    if (lastDrawnMode != currentMode) {
+      lcd.clear();
+      lcd.setCursor(0, 0); lcd.print(" SEDANG DALAM  ");
+      lcd.setCursor(0, 1); lcd.print(" PERBAIKAN...  ");
+      lastDrawnMode = currentMode;
+    }
     return;
   }
 
-  // Normal Operation (Reader or Writer)
   if (currentMode == "READER") {
+    if (lastDrawnMode != currentMode) {
+      showIdleMessage();
+      lastDrawnMode = currentMode;
+    }
     updateScroll();
   } else if (currentMode == "WRITER") {
-    lcd.setCursor(0, 0); lcd.print("MODE REGISTRASI ");
-    lcd.setCursor(0, 1); lcd.print("Tempel Kartu... ");
+    if (lastDrawnMode != currentMode) {
+      lcd.clear();
+      lcd.setCursor(0, 0); lcd.print("MODE REGISTRASI ");
+      lcd.setCursor(0, 1); lcd.print("Tempel Kartu... ");
+      lastDrawnMode = currentMode;
+    }
   }
 
-  // RFID Scanning
   if (!rfid.PICC_IsNewCardPresent()) return;
   if (!rfid.PICC_ReadCardSerial()) return;
 
@@ -125,17 +139,13 @@ void checkServerStatus() {
     http.begin(baseUrl + "/api/device/ping");
     http.addHeader("X-Device-Token", deviceToken);
     http.addHeader("X-Device-Id", deviceID);
+    http.setTimeout(5000);
     
     int httpCode = http.GET();
     if (httpCode == 200) {
       String payload = http.getString();
       DynamicJsonDocument doc(512);
       deserializeJson(doc, payload);
-
-      if (!isServerOnline) {
-        lcd.clear();
-        Serial.println("System Back Online");
-      }
 
       isServerOnline = true;
       offlineMessageShown = false;
@@ -146,9 +156,7 @@ void checkServerStatus() {
 
       if (serverMode != currentMode) {
         Serial.println("Mode berubah ke: " + serverMode);
-        lcd.clear(); 
         currentMode = serverMode;
-        if(currentMode == "READER") showIdleMessage();
       }
 
       if (serverText != "" && serverText != "null") {
@@ -163,22 +171,16 @@ void checkServerStatus() {
       if (serverPower != (isDevicePowerOn ? 1 : 0)) {
         isDevicePowerOn = (serverPower == 1);
         Serial.println(isDevicePowerOn ? "Device Wake Up" : "Device Sleeping");
-        if (isDevicePowerOn) lcd.clear();
       }
 
     } else {
-      if (isServerOnline) {
-        lcd.clear();
-      }
       isServerOnline = false;
       Serial.println("Server Error: " + String(httpCode));
     }
     http.end();
   } else {
-    if (isServerOnline) {
-      lcd.clear();
-    }
     isServerOnline = false;
+    WiFi.reconnect();
   }
 }
 
