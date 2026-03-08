@@ -29,7 +29,8 @@
 
 <div class="container py-4">
     <div class="row justify-content-center">
-        <div class="col-lg-12">
+        <!-- Kontrol Perangkat -->
+        <div class="col-lg-12 mb-4">
             <div class="card p-4">
                 <h5 class="fw-bold mb-4"><i class="bi bi-cpu-fill me-2 text-primary"></i>Kontrol Perangkat ESP32</h5>
                 <div class="table-responsive">
@@ -49,6 +50,32 @@
                 <div class="alert alert-info mt-3 small">
                     <i class="bi bi-info-circle-fill me-2"></i>
                     <strong>READER:</strong> Absensi normal. <strong>WRITER:</strong> Mode pendaftaran. <strong>MAINTENANCE:</strong> Perbaikan.
+                </div>
+            </div>
+        </div>
+
+        <!-- Log Aktivitas Perangkat -->
+        <div class="col-lg-12">
+            <div class="card p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h5 class="fw-bold mb-0"><i class="bi bi-journal-text me-2 text-success"></i>Log Aktivitas Perangkat</h5>
+                    <button class="btn btn-sm btn-outline-success rounded-pill" onclick="loadDeviceActivities()">
+                        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                    </button>
+                </div>
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table table-sm table-hover border-top">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>Waktu</th>
+                                <th>ID Alat</th>
+                                <th>Aktivitas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-log-list">
+                            <tr><td colspan="3" class="text-center text-muted py-4">Memuat data log...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -94,10 +121,39 @@
 
     window.onload = () => {
         loadDevices();
+        loadDeviceActivities();
         setInterval(() => {
-            if (!activeInputId) loadDevices();
+            if (!activeInputId) {
+                loadDevices();
+                loadDeviceActivities();
+            }
         }, 5000); 
     };
+
+    async function loadDeviceActivities() {
+        try {
+            const res = await fetch('/api/admin/device-activities');
+            const data = await res.json();
+            const list = document.getElementById('activity-log-list');
+
+            if (data.length === 0) {
+                list.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">Belum ada aktivitas tercatat.</td></tr>';
+                return;
+            }
+
+            list.innerHTML = data.map(log => `
+                <tr>
+                    <td class="small text-muted">${log.timestamp}</td>
+                    <td><span class="badge bg-light text-dark border">${log.device_id}</span></td>
+                    <td>
+                        <code class="text-success fw-bold">${log.activity}</code>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (e) {
+            console.error("Gagal memuat log aktivitas:", e);
+        }
+    }
 
     async function loadDevices() {
         try {

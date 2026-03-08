@@ -1,5 +1,5 @@
 // ==========================================
-// Firmware V1.4 - Fixing Connection Issue
+// Firmware V1.5 - Offline Buffer!
 // ==========================================
 
 #include <WiFi.h>
@@ -8,9 +8,10 @@
 #include <MFRC522.h>
 #include <LiquidCrystal_I2C.h>
 #include <ArduinoJson.h>
+#include <LittleFS.h>
 
-const char* ssid     = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid     = "NabatiKeju-IoT";
+const char* password = "NabatiKejuIOTProject";
 
 String baseUrl      = "http://YOUR_SERVER_IP:3000";
 String deviceID     = "ESP32 - PROTOTYPE"; //Ganti Sesuai Kebutuhan/Lokasi 
@@ -35,11 +36,16 @@ String lastDrawnMode = "";
 bool isDevicePowerOn = true;
 bool isServerOnline = true;
 bool offlineMessageShown = false;
+bool wasOffline = false;
 
 void setup() {
   Serial.begin(115200);
   SPI.begin();
   rfid.PCD_Init();
+
+  if(!LittleFS.begin(true)){
+    Serial.println("An Error has occurred while mounting LittleFS");
+  }
 
   lcd.init();
   lcd.backlight();
@@ -54,7 +60,9 @@ void setup() {
   }
 
   Serial.println("\n--- SISTEM AKTIF ---");
+  sendLog("SYSTEM_BOOT");
   checkServerStatus();
+  sendLog("WIFI_CONNECTED - IP: " + WiFi.localIP().toString());
   
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Selamat Datang!");
@@ -68,12 +76,6 @@ void loop() {
   if (millis() - lastServerCheck > serverCheckInterval) {
     checkServerStatus();
     lastServerCheck = millis();
-  }
-
-  if (!isServerOnline) {
-    displayOffline();
-    lastDrawnMode = "OFFLINE";
-    return;
   }
 
   if (!isDevicePowerOn) {
@@ -133,6 +135,88 @@ void loop() {
   rfid.PCD_StopCrypto1();
 }
 
+void saveToBuffer(String uid) {
+  File file = LittleFS.open("/buffer.txt", FILE_APPEND);
+  if(!file) {
+    Serial.println("Gagal membuka file buffer!");
+    return;
+  }
+  file.println(uid);
+  file.close();
+  Serial.println("Data disimpan ke buffer: " + uid);
+}
+
+void syncBuffer() {
+  if (!LittleFS.exists("/buffer.txt")) return;
+
+  File file = LittleFS.open("/buffer.txt", FILE_READ);
+  if (!file) return;
+
+  Serial.println("--- Sinkronisasi Buffer Dimulai ---");
+  sendLog("SYNC_STARTED");
+  lcd.clear();
+  lcd.setCursor(0, 0); lcd.print("SINKRON DATA...");
+  
+  String unsyncedUids = "";
+  int count = 0;
+
+  while (file.available()) {
+    String uid = file.readStringUntil('\n');
+    uid.trim();
+    if (uid.length() > 0) {
+      HTTPClient http;
+      http.begin(baseUrl + "/api/absen");
+      http.addHeader("Content-Type", "application/json");
+      http.addHeader("X-Device-Token", deviceToken);
+
+      StaticJsonDocument<200> doc;
+      doc["rfid_uid"] = uid;
+      doc["device_id"] = deviceID;
+      String body;
+      serializeJson(doc, body);
+
+      int code = http.POST(body);
+      if (code == 200 || code == 400) {
+        count++;
+      } else {
+        unsyncedUids += uid + "\n";
+      }
+      http.end();
+      delay(100);
+    }
+  }
+  file.close();
+
+  if (unsyncedUids.length() > 0) {
+    File rewriteFile = LittleFS.open("/buffer.txt", FILE_WRITE);
+    rewriteFile.print(unsyncedUids);
+    rewriteFile.close();
+  } else {
+    LittleFS.remove("/buffer.txt");
+  }
+
+  Serial.println("Sinkronisasi Selesai. " + String(count) + " terkirim.");
+  sendLog("SYNC_COMPLETED - Data: " + String(count));
+  lcd.setCursor(0, 1); lcd.print(String(count) + " Data Terkirim");
+  delay(2000);
+  showIdleMessage();
+}
+
+void sendLog(String activity) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.begin(baseUrl + "/api/device/log");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Device-Token", deviceToken);
+  StaticJsonDocument<200> doc;
+  doc["device_id"] = deviceID;
+  doc["activity"] = activity;
+  String body;
+  serializeJson(doc, body);
+  http.POST(body);
+  http.end();
+}
+
 void checkServerStatus() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
@@ -150,12 +234,16 @@ void checkServerStatus() {
       isServerOnline = true;
       offlineMessageShown = false;
       
+      if (wasOffline) {
+        syncBuffer();
+        wasOffline = false;
+      }
+
       String serverMode = doc["mode"].as<String>();
       int serverPower = doc["power_status"] | 1;
       String serverText = doc["display_text"].as<String>();
 
       if (serverMode != currentMode) {
-        Serial.println("Mode berubah ke: " + serverMode);
         currentMode = serverMode;
       }
 
@@ -164,22 +252,29 @@ void checkServerStatus() {
           lastServerCustomText = serverText;
           msgScroll = "  " + brandPrefix + serverText + "  ";
           scrollPos = 0;
-          Serial.println("Running Text Updated: " + serverText);
         }
+      } else if (lastServerCustomText != "") {
+          // Reset to default if server clears custom text
+          lastServerCustomText = "";
+          msgScroll = "  " + brandPrefix + "Silahkan Tap Kartu RFID Anda Di Sini!  ";
+          scrollPos = 0;
       }
 
       if (serverPower != (isDevicePowerOn ? 1 : 0)) {
         isDevicePowerOn = (serverPower == 1);
-        Serial.println(isDevicePowerOn ? "Device Wake Up" : "Device Sleeping");
       }
 
     } else {
       isServerOnline = false;
-      Serial.println("Server Error: " + String(httpCode));
+      wasOffline = true;
+      displayOffline();
+      Serial.println("Server Offline (HTTP: " + String(httpCode) + ")");
     }
     http.end();
   } else {
     isServerOnline = false;
+    wasOffline = true;
+    displayOffline();
     WiFi.reconnect();
   }
 }
@@ -187,13 +282,16 @@ void checkServerStatus() {
 void displayOffline() {
   if (!offlineMessageShown) {
     lcd.clear();
-    lcd.setCursor(0, 0); lcd.print("MOHON MAAF");
-    lcd.setCursor(0, 1); lcd.print("SISTEM OFFLINE");
+    lcd.setCursor(0, 0); lcd.print("Selamat Datang!");
+    // Kembalikan running text ke default saat offline
+    msgScroll = "  " + brandPrefix + "  ";
+    scrollPos = 0;
     offlineMessageShown = true;
   }
 }
 
 void updateScroll() {
+  // Running text tetap berjalan baik online maupun offline selama dalam mode READER
   if (millis() - lastScrollTime > 350) {
     lcd.setCursor(0, 1);
     String displayMsg = msgScroll.substring(scrollPos, scrollPos + 16);
@@ -211,6 +309,16 @@ void handleAttendance(String uid) {
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Memproses...");
   
+  if (!isServerOnline) {
+    saveToBuffer(uid);
+    lcd.clear();
+    lcd.setCursor(0, 0); lcd.print("OFFLINE: Tersimpan");
+    lcd.setCursor(0, 1); lcd.print(uid);
+    delay(2000);
+    showIdleMessage();
+    return;
+  }
+
   HTTPClient http;
   http.begin(baseUrl + "/api/absen");
   http.addHeader("Content-Type", "application/json");
@@ -243,9 +351,10 @@ void handleAttendance(String uid) {
       }
     }
   } else {
+    saveToBuffer(uid);
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print("Gagal Koneksi");
-    lcd.setCursor(0, 1); lcd.print("Error: " + String(code));
+    lcd.setCursor(0, 1); lcd.print("Buffer: Disimpan");
   }
   http.end();
   delay(3000);
@@ -257,6 +366,14 @@ void handleRegistration(String uid) {
   lcd.setCursor(0, 0); lcd.print("UID Terdeteksi:");
   lcd.setCursor(0, 1); lcd.print(uid);
   
+  if (!isServerOnline) {
+    lcd.clear();
+    lcd.setCursor(0, 0); lcd.print("REGISTRASI GAGAL");
+    lcd.setCursor(0, 1); lcd.print("Server Offline");
+    delay(3000);
+    return;
+  }
+
   HTTPClient http;
   http.begin(baseUrl + "/api/device/report-scan");
   http.addHeader("Content-Type", "application/json");

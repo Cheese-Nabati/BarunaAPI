@@ -12,17 +12,14 @@ fastify.register(require('@fastify/session'), {
   cookie: { secure: false }
 });
 
-// --- UNIFIED SECURITY HOOK ---
 fastify.addHook('preHandler', async (request, reply) => {
     const { url, method } = request;
     const cleanUrl = url.split('?')[0].replace(/\/$/, ""); // Normalize URL
 
-    // 1. PUBLIC ASSETS & LOGIN
     if (cleanUrl === '/login' || cleanUrl === '/api/login' || cleanUrl.startsWith('/properties')) return;
 
-    // 2. HARDWARE / API AUTHENTICATION
     // These endpoints allow EITHER a valid session OR a valid Device Token
-    const hardwareEndpoints = ['/api/absen', '/api/students', '/api/device/ping', '/api/device/report-scan'];
+    const hardwareEndpoints = ['/api/absen', '/api/students', '/api/device/ping', '/api/device/report-scan', '/api/device/log'];
     const isHardwareApi = hardwareEndpoints.includes(cleanUrl);
     
     if (isHardwareApi) {
@@ -34,7 +31,6 @@ fastify.addHook('preHandler', async (request, reply) => {
         return reply.status(403).send({ success: false, message: "Invalid Device Token" });
     }
 
-    // 3. ADMIN / DASHBOARD PROTECTION
     const protectedRoutes = ['/', '/dashboard', '/settings', '/student-view', '/recap-view', '/students-view', '/api'];
     const isProtected = protectedRoutes.some(path => cleanUrl === path || cleanUrl.startsWith(path + '/'));
 
@@ -74,7 +70,15 @@ async function main() {
         )
     `);
 
-    // --- AUTO MIGRATION (Ensure columns exist for older DB versions) ---
+    await db.exec(`
+        CREATE TABLE IF NOT EXISTS device_activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT,
+            activity TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
     try {
         await db.exec(`ALTER TABLE devices ADD COLUMN display_text TEXT DEFAULT 'Selamat Datang!'`);
     } catch (e) {}

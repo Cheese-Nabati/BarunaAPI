@@ -75,6 +75,15 @@ fastify.get('/logout', async (request, reply) => {
         ORDER BY attendance_logs.timestamp DESC LIMIT 20
     `);
     });
+
+    fastify.get('/api/admin/device-activities', async (request, reply) => {
+        return await db.all(`
+            SELECT id, device_id, activity, datetime(timestamp, 'localtime') as timestamp 
+            FROM device_activities 
+            ORDER BY timestamp DESC LIMIT 50
+        `);
+    });
+
     fastify.get('/api/recap', async () => {
         return await db.all(`
             SELECT monthly_results.*, students.name, students.class 

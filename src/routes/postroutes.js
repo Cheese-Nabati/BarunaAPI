@@ -179,6 +179,18 @@ fastify.post('/api/login', async (request, reply) => {
         }
     });
 
+    fastify.post('/api/device/log', async (request, reply) => {
+        const { device_id, activity } = request.body;
+        if (!device_id || !activity) return reply.status(400).send({ success: false, message: "Missing data" });
+
+        try {
+            await db.run('INSERT INTO device_activities (device_id, activity) VALUES (?, ?)', [device_id, activity]);
+            return { success: true };
+        } catch (err) {
+            return reply.status(500).send({ success: false, error: err.message });
+        }
+    });
+
     fastify.post('/api/device/report-scan', async (request, reply) => {
         const { device_id, rfid_uid } = request.body;
         if (!device_id || !rfid_uid) return reply.status(400).send({ success: false, message: "Missing data" });
