@@ -1,9 +1,10 @@
 // ==========================================
-// Firmware V1.5 - Offline Buffer!
+// Firmware V1.5 - Offline Buffer! (Insecure HTTPS Version)
 // ==========================================
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h> 
 #include <SPI.h>
 #include <MFRC522.h>
 #include <LiquidCrystal_I2C.h>
@@ -13,12 +14,12 @@
 const char* ssid     = "NabatiKeju-IoT";
 const char* password = "NabatiKejuIOTProject";
 
-String baseUrl      = "http://YOUR_SERVER_IP:3000";
+String baseUrl      = "https://barunapidemo.up.railway.app";
 String deviceID     = "ESP32 - PROTOTYPE"; //Ganti Sesuai Kebutuhan/Lokasi 
-const String deviceToken = "YOUR_DEVICE_TOKEN_HERE";
+const String deviceToken = "DEMO_SECURE_TOKEN_2026";
 
 #define RFID_SDA_PIN 14
-#define RFID_RST_PIN 27
+#define RFID_RST_PIN 27 
 MFRC522 rfid(RFID_SDA_PIN, RFID_RST_PIN);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -164,8 +165,10 @@ void syncBuffer() {
     String uid = file.readStringUntil('\n');
     uid.trim();
     if (uid.length() > 0) {
+      WiFiClientSecure client;
+      client.setInsecure();
       HTTPClient http;
-      http.begin(baseUrl + "/api/absen");
+      http.begin(client, baseUrl + "/api/absen");
       http.addHeader("Content-Type", "application/json");
       http.addHeader("X-Device-Token", deviceToken);
 
@@ -204,8 +207,10 @@ void syncBuffer() {
 
 void sendLog(String activity) {
   if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
-  http.begin(baseUrl + "/api/device/log");
+  http.begin(client, baseUrl + "/api/device/log");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Token", deviceToken);
   StaticJsonDocument<200> doc;
@@ -219,8 +224,10 @@ void sendLog(String activity) {
 
 void checkServerStatus() {
   if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client;
+    client.setInsecure();
     HTTPClient http;
-    http.begin(baseUrl + "/api/device/ping");
+    http.begin(client, baseUrl + "/api/device/ping");
     http.addHeader("X-Device-Token", deviceToken);
     http.addHeader("X-Device-Id", deviceID);
     http.setTimeout(5000);
@@ -309,6 +316,7 @@ void handleAttendance(String uid) {
   lcd.clear();
   lcd.setCursor(0, 0); lcd.print("Memproses...");
   
+  
   if (!isServerOnline) {
     saveToBuffer(uid);
     lcd.clear();
@@ -319,8 +327,10 @@ void handleAttendance(String uid) {
     return;
   }
 
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
-  http.begin(baseUrl + "/api/absen");
+  http.begin(client, baseUrl + "/api/absen");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Token", deviceToken);
 
@@ -374,8 +384,10 @@ void handleRegistration(String uid) {
     return;
   }
 
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
-  http.begin(baseUrl + "/api/device/report-scan");
+  http.begin(client, baseUrl + "/api/device/report-scan");
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-Device-Token", deviceToken);
 
